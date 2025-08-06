@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -41,6 +42,55 @@ func (s *AIPrompter) SinglePrompt(ctx context.Context,
 	}
 
 	return pr, nil
+}
+
+// StreamPromptChunksResponse defines the response structure for streaming prompt chunks.
+type StreamPromptChunksResponse struct {
+	Response string
+	Error    error
+}
+
+// StreamPromptChunks takes already chunked user input (as []string),
+// and streams each response's text via responseChan. Any error is sent through errorChan and halts further processing.
+func (s *AIPrompter) StreamPromptChunks(ctx context.Context, chunks []string, opts ...PromptOption) <-chan StreamPromptChunksResponse {
+
+	responseChan := make(chan StreamPromptChunksResponse)
+
+	go func() {
+		defer close(responseChan)
+
+		if len(chunks) == 0 {
+			responseChan <- StreamPromptChunksResponse{Error: errors.New("no chunks provided")}
+			return
+		}
+
+		for i, chunk := range chunks {
+			select {
+			case <-ctx.Done():
+				responseChan <- StreamPromptChunksResponse{Error: ctx.Err()}
+				return
+			default:
+				cm := []Message{
+					{
+						Role:    RoleUser,
+						Message: chunk,
+					},
+				}
+
+				resp, err := s.SinglePrompt(ctx, cm, opts...)
+				if err != nil {
+					responseChan <- StreamPromptChunksResponse{Error: errors.Wrapf(err, "failed to process chunk %d", i+1)}
+					return
+				}
+
+				if resp != nil && strings.TrimSpace(resp.Response) != "" {
+					responseChan <- StreamPromptChunksResponse{Response: resp.Response}
+				}
+			}
+		}
+	}()
+
+	return responseChan
 }
 
 func (s *AIPrompter) prompt(ctx context.Context, rOpts *PromptOptions, chatHistory ...Message) (*PromptResponse, error) {
