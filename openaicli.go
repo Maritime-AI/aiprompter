@@ -2,6 +2,7 @@ package aiprompter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -80,6 +81,8 @@ func (c *OpenAIClient) Prompt(ctx context.Context, msgs []Message, opts ...Promp
 			Content: m.Message,
 		})
 	}
+
+	fmt.Println("Chat Messages:", cmsgs)
 
 	req := openai.ChatCompletionRequest{
 		Model:       c.model,
