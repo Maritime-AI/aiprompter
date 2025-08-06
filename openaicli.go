@@ -2,7 +2,6 @@ package aiprompter
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/pkg/errors"
@@ -37,7 +36,7 @@ type OpenAIClient struct {
 func NewOpenAIClient(apiKey string, opts ...OpenAIOption) *OpenAIClient {
 	c := &OpenAIClient{
 		apiKey: apiKey,
-		model:  openai.GPT4oMini,
+		model:  defaultOpenAIModel,
 		client: openai.NewClient(apiKey),
 	}
 
@@ -85,8 +84,6 @@ func (c *OpenAIClient) Prompt(ctx context.Context, msgs []Message, opts ...Promp
 			Content: m.Message,
 		})
 	}
-
-	fmt.Println("Chat Messages:", cmsgs)
 
 	req := openai.ChatCompletionRequest{
 		Model:       c.model,
