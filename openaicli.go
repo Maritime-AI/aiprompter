@@ -26,9 +26,10 @@ func WithOpenAIModel(model string) OpenAIOption {
 
 // OpenAIClient wraps the OpenAI client with additional configuration options.
 type OpenAIClient struct {
-	client *openai.Client
-	model  string
-	apiKey string
+	client       *openai.Client
+	model        string
+	apiKey       string
+	systemPrompt *string
 }
 
 // NewClient initializes a new Client with the provided API key and options.
@@ -61,13 +62,15 @@ type PromptResponse struct {
 
 // Prompt sends a chat completion request to the OpenAI API with the given prompt.
 // It returns the generated response as a string or an error if the request fails.
-func (c *OpenAIClient) Prompt(ctx context.Context, systemPrompt string, msgs ...Message) (*PromptResponse, error) {
+func (c *OpenAIClient) Prompt(ctx context.Context, msgs []Message, opts ...PromptOption) (*PromptResponse, error) {
 	now := time.Now()
-	cmsgs := []openai.ChatCompletionMessage{
-		{
+	var cmsgs []openai.ChatCompletionMessage
+
+	if c.systemPrompt != nil {
+		cmsgs = append(cmsgs, openai.ChatCompletionMessage{
 			Role:    "system",
-			Content: systemPrompt,
-		},
+			Content: *c.systemPrompt,
+		})
 	}
 
 	// add chat history

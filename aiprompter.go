@@ -1,7 +1,6 @@
 package aiprompter
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,9 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
-
-// Option defines a function signature used to modify Options.
-type Option func(*Options)
 
 // AIPrompter is a wrapper around an AI chat client, used to manage prompts and logging.
 type AIPrompter struct {
@@ -25,19 +21,13 @@ func NewAIPrompter(chatCli Client) *AIPrompter {
 	}
 }
 
-// Options defines configuration settings for a single prompt execution.
-type Options struct {
-	RunID     string
-	LogBuffer *bytes.Buffer // Assuming Buffer is a type that implements io.Writer
-}
-
 // SinglePrompt prompts the AI model with a single system prompt and optional chat history.
 // It returns the AI's response or an error if the operation fails.
-func (s *AIPrompter) SinglePrompt(ctx context.Context, systemPrompt string,
-	chatHistory []Message, opts ...Option) (*PromptResponse, error) {
+func (s *AIPrompter) SinglePrompt(ctx context.Context,
+	chatHistory []Message, opts ...PromptOption) (*PromptResponse, error) {
 
-	rOpts := &Options{
-		RunID: uuid.NewString(),
+	rOpts := &PromptOptions{
+		runID: uuid.NewString(),
 	}
 
 	// apply options
@@ -45,7 +35,7 @@ func (s *AIPrompter) SinglePrompt(ctx context.Context, systemPrompt string,
 		opt(rOpts)
 	}
 
-	pr, err := s.prompt(ctx, rOpts, systemPrompt, chatHistory...)
+	pr, err := s.prompt(ctx, rOpts, chatHistory...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to process single prompt")
 	}
@@ -53,21 +43,27 @@ func (s *AIPrompter) SinglePrompt(ctx context.Context, systemPrompt string,
 	return pr, nil
 }
 
-func (s *AIPrompter) prompt(ctx context.Context, rOpts *Options, systemPrompt string, chatHistory ...Message) (*PromptResponse, error) {
-	resp, err := s.chatCli.Prompt(ctx, systemPrompt, chatHistory...)
+func (s *AIPrompter) prompt(ctx context.Context, rOpts *PromptOptions, chatHistory ...Message) (*PromptResponse, error) {
+
+	var pOpts []PromptOption
+	if rOpts.systemPrompt != nil {
+		pOpts = append(pOpts, WithSystemPrompt(rOpts.systemPrompt))
+	}
+
+	resp, err := s.chatCli.Prompt(ctx, chatHistory, pOpts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to prompt model")
 	}
 
-	if err := s.appendToLogFile(rOpts, systemPrompt, resp); err != nil {
+	if err := s.appendToLogFile(rOpts, resp); err != nil {
 		return nil, errors.Wrap(err, "failed to append to log file")
 	}
 
 	return resp, nil
 }
 
-func (s *AIPrompter) appendToLogFile(rOpts *Options, promptStr string, response *PromptResponse) error {
-	if rOpts.LogBuffer == nil {
+func (s *AIPrompter) appendToLogFile(pOpts *PromptOptions, response *PromptResponse) error {
+	if pOpts.logBuffer == nil {
 		return nil
 	}
 
@@ -76,10 +72,15 @@ func (s *AIPrompter) appendToLogFile(rOpts *Options, promptStr string, response 
 		return errors.Wrap(err, "failed to marshal prompt response")
 	}
 
-	logData := fmt.Sprintf("RunID: %s\n Prompt: %s\nResponse: %s\n\n",
-		rOpts.RunID, promptStr, string(data))
-
-	if _, err := rOpts.LogBuffer.WriteString(logData); err != nil {
+	var logDataStr string
+	if pOpts.runID != "" {
+		logDataStr += fmt.Sprintf("RunID: %s\n", pOpts.runID)
+	}
+	if pOpts.systemPrompt != nil {
+		logDataStr += fmt.Sprintf("System Prompt: %s\n", *pOpts.systemPrompt)
+	}
+	logDataStr += fmt.Sprintf("Response: %s\n\n", string(data))
+	if _, err := pOpts.logBuffer.WriteString(logDataStr); err != nil {
 		return errors.Wrap(err, "failed to write to log buffer")
 	}
 
